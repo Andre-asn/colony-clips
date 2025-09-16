@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -17,41 +17,87 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   const { user } = useAuth()
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
+  const [thumbnailUrlsById, setThumbnailUrlsById] = useState<Record<string, string>>({})
+  const isFetchingRef = useRef(false)
 
   useEffect(() => {
+    // Only run when user id changes or refresh is triggered
     loadVideos()
-  }, [refreshTrigger])
+  }, [refreshTrigger, user?.id])
 
   const loadVideos = async () => {
-    if (!user) return
-
+    console.log('loadVideos called, user:', user)
+    
+    if (!user) {
+      console.log('No user found, exiting loadVideos')
+      setLoading(false)
+      return
+    }
+  
+    console.log('Starting video query for user ID:', user.id)
+  
     try {
+      if (isFetchingRef.current) {
+        console.log('Fetch already in progress, skipping')
+        return
+      }
+      isFetchingRef.current = true
       const { data, error } = await supabase
         .from('videos')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-
-      if (error) throw error
+  
+      console.log('Query result:', { data, error, dataLength: data?.length })
+  
+      if (error) {
+        console.error('Database error:', error)
+        throw error
+      }
+      
       setVideos(data || [])
       
       // Notify parent component about video count
       if (onVideosLoaded) {
+        console.log('Calling onVideosLoaded with:', (data || []).length > 0)
         onVideosLoaded((data || []).length > 0)
       }
     } catch (error) {
       console.error('Failed to load videos:', error)
     } finally {
+      console.log('Setting loading to false')
       setLoading(false)
+      isFetchingRef.current = false
     }
   }
 
-  const getThumbnailUrl = (thumbnailPath: string) => {
-    const { data } = supabase.storage
-      .from('videos')
-      .getPublicUrl(thumbnailPath)
-    return data.publicUrl
-  }
+  useEffect(() => {
+    const fetchThumbnailUrls = async () => {
+      if (!videos || videos.length === 0) return
+      try {
+        const entries = await Promise.all(
+          videos.map(async (v) => {
+            const key = (v.thumbnail_path || '').trim()
+            if (!key) return [v.id, ''] as const
+            const { data, error } = await supabase.storage
+              .from('videos')
+              .createSignedUrl(key, 3600)
+            if (error) {
+              console.error('Signed URL error for key:', key, error)
+              return [v.id, ''] as const
+            }
+            return [v.id, data.signedUrl] as const
+          })
+        )
+        const map: Record<string, string> = {}
+        for (const [id, url] of entries) map[id] = url
+        setThumbnailUrlsById(map)
+      } catch (e) {
+        console.error('Failed fetching thumbnail URLs', e)
+      }
+    }
+    fetchThumbnailUrls()
+  }, [videos])
 
   const copyShareLink = (shareToken: string) => {
     const shareUrl = `${window.location.origin}/watch/${shareToken}`
@@ -87,32 +133,36 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
       {videos.map((video) => (
         <div key={video.id} className="bg-gray-800 rounded-lg overflow-hidden">
-          <div className="aspect-video bg-gray-700 relative">
-            <img
-              src={getThumbnailUrl(video.thumbnail_path)}
-              alt={video.filename}
-              className="w-full h-full object-cover"
-            />
+          <div className="aspect-square bg-gray-700 relative">
+            {thumbnailUrlsById[video.id] ? (
+              <img
+                src={thumbnailUrlsById[video.id]}
+                alt={video.filename}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-gray-700" />
+            )}
           </div>
-          <div className="p-4">
-            <h3 className="text-white font-medium truncate mb-2">{video.filename}</h3>
-            <div className="text-sm text-gray-400 mb-3">
+          <div className="p-3">
+            <h3 className="text-white font-medium truncate mb-2 text-sm">{video.filename}</h3>
+            <div className="text-xs text-gray-400 mb-2">
               <p>Size: {Math.round(video.compressed_size / 1024 / 1024 * 100) / 100}MB</p>
               <p>Uploaded: {new Date(video.created_at).toLocaleDateString()}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               <button
                 onClick={() => copyShareLink(video.share_token)}
-                className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded transition-colors"
+                className="flex-1 px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded transition-colors cursor-pointer"
               >
                 Share
               </button>
               <button
                 onClick={() => deleteVideo(video)}
-                className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+                className="flex-1 px-2 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors cursor-pointer"
               >
                 Delete
               </button>

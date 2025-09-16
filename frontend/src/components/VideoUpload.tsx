@@ -9,35 +9,90 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
   const [progress, setProgress] = useState('')
   const [progressPercent, setProgressPercent] = useState(0)
   const [dragActive, setDragActive] = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const ffmpegRef = useRef<FFmpeg | null>(null)
 
   const handleFileSelect = (file: File) => {
     if (file && file.type.startsWith('video/')) {
+      // Check file size - recommend max 200MB for safe compression under 50MB
+      const maxSize = 200 * 1024 * 1024 // 200MB in bytes
+      if (file.size > maxSize) {
+        alert(`File too large! Maximum recommended size is 200MB. Your file is ${Math.round(file.size / 1024 / 1024)}MB. Please compress your video first or choose a smaller file.`)
+        return
+      }
+      
+      setCancelled(false) // Reset cancelled state for new upload
       processVideo(file)
     } else {
       alert('Please select a video file')
     }
   }
 
+  const cancelUpload = async () => {
+    if (cancelling) return // Prevent multiple cancel clicks
+    
+    setCancelling(true)
+    setCancelled(true)
+    setProgress('Cancelling upload...')
+    setProgressPercent(0)
+    
+    // Clean up FFmpeg instance
+    if (ffmpegRef.current) {
+      try {
+        await ffmpegRef.current.terminate()
+      } catch (e) {
+        // Ignore termination errors
+      }
+      ffmpegRef.current = null
+    }
+    
+    // Wait a moment for cleanup to complete
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Reset all states completely
+    setUploading(false)
+    setCancelling(false)
+    setCancelled(false)
+    setProgress('')
+    setProgressPercent(0)
+  }
+
   const processVideo = async (file: File) => {
     if (!user) return
 
+    // Clean up any existing FFmpeg instance first
+    if (ffmpegRef.current) {
+      try {
+        await ffmpegRef.current.terminate()
+      } catch (e) {
+        // Ignore termination errors
+      }
+      ffmpegRef.current = null
+    }
+
     setUploading(true)
+    setCancelled(false)
+    setCancelling(false)
     setProgress('Loading video processor...')
     setProgressPercent(5)
 
     try {
       // Create FFmpeg instance
       const ffmpeg = new FFmpeg()
+      ffmpegRef.current = ffmpeg
       
-      // Set up progress listener
+      // Set up progress listener for video compression (0-60%)
       ffmpeg.on('progress', ({ progress }) => {
-        const percent = Math.round(progress * 100)
-        setProgressPercent(Math.min(percent, 70)) // Cap at 70% for compression
+        if (cancelled || cancelling) return
+        const percent = Math.round(progress * 60) // Video compression gets 0-60%
+        setProgressPercent(20 + percent) // Start from 20%, go to 80%
       })
       
       // Load FFmpeg
       await ffmpeg.load()
+      if (cancelled || cancelling) return
       setProgressPercent(10)
 
       setProgress('Compressing video...')
@@ -49,41 +104,99 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       const thumbnailFileName = 'thumbnail.jpg'
       
       await ffmpeg.writeFile(inputFileName, new Uint8Array(await file.arrayBuffer()))
+      if (cancelled || cancelling) return
       setProgressPercent(20)
 
-      // Compress video for Discord compatibility (under 25MB target)
+      // Compress video for Discord compatibility (under 25MB target) - optimized for speed
       await ffmpeg.exec([
         '-i', inputFileName,
         '-c:v', 'libx264',
-        '-crf', '28',
-        '-preset', 'medium',
+        '-crf', '30', // Slightly higher CRF for faster encoding
+        '-preset', 'ultrafast', // Fastest preset
+        '-tune', 'fastdecode', // Optimize for fast decoding
         '-c:a', 'aac',
-        '-b:a', '128k',
+        '-b:a', '96k', // Lower audio bitrate for smaller files
         '-movflags', '+faststart',
+        '-threads', '0', // Use all available CPU threads
         outputFileName
       ])
-      setProgressPercent(70)
-
-      // Generate thumbnail from first frame
-      await ffmpeg.exec([
-        '-i', inputFileName,
-        '-vframes', '1',
-        '-f', 'image2',
-        '-vf', 'scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2',
-        thumbnailFileName
-      ])
+      if (cancelled || cancelling) return
       setProgressPercent(80)
 
-      setProgress('Uploading files...')
+      setProgress('Generating thumbnail...')
+      setProgressPercent(82)
+
+      // Generate thumbnail from compressed video (much faster than original)
+      await ffmpeg.exec([
+        '-i', outputFileName, // Use compressed video instead of original
+        '-ss', '0', // Seek to start immediately
+        '-vframes', '1', // Only extract 1 frame
+        '-f', 'image2',
+        '-vf', 'scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2',
+        '-q:v', '5', // Lower quality for speed
+        '-threads', '0', // Use all available CPU threads
+        '-y', // Overwrite output file
+        thumbnailFileName
+      ])
+      if (cancelled || cancelling) return
       setProgressPercent(85)
 
+      setProgress('Reading files...')
+      setProgressPercent(87)
+
       // Read processed files
-      const compressedVideo = await ffmpeg.readFile(outputFileName)
+      let compressedVideo = await ffmpeg.readFile(outputFileName)
       const thumbnail = await ffmpeg.readFile(thumbnailFileName)
+      if (cancelled || cancelling) return
+      
+      // Check if original file is smaller and under 50MB limit
+      const supabaseMaxSize = 50 * 1024 * 1024 // 50MB Supabase limit
+      const originalFileSize = file.size
+      
+      if (originalFileSize < compressedVideo.length && originalFileSize <= supabaseMaxSize) {
+        setProgress('Original file is smaller, using original...')
+        setProgressPercent(88)
+        
+        // Use original file instead of compressed version
+        compressedVideo = new Uint8Array(await file.arrayBuffer())
+        console.log(`Using original file: ${Math.round(originalFileSize / 1024 / 1024 * 100) / 100}MB vs compressed: ${Math.round(compressedVideo.length / 1024 / 1024 * 100) / 100}MB`)
+      } else {
+        // Check if compressed video is still too large (>45MB to be safe)
+        const maxCompressedSize = 45 * 1024 * 1024 // 45MB
+        if (compressedVideo.length > maxCompressedSize) {
+          setProgress('File still too large, applying extra compression...')
+          setProgressPercent(87)
+          
+          // Re-compress with more aggressive settings
+          await ffmpeg.exec([
+            '-i', outputFileName,
+            '-c:v', 'libx264',
+            '-crf', '35', // Higher CRF for more compression
+            '-preset', 'ultrafast',
+            '-tune', 'fastdecode',
+            '-c:a', 'aac',
+            '-b:a', '64k', // Lower audio bitrate
+            '-movflags', '+faststart',
+            '-threads', '0',
+            '-y', // Overwrite
+            'output2.mp4'
+          ])
+          
+          const recompressedVideo = await ffmpeg.readFile('output2.mp4')
+          if (recompressedVideo.length <= maxCompressedSize) {
+            // Use the more compressed version
+            compressedVideo = recompressedVideo
+          }
+          // If still too large, proceed anyway and let Supabase handle the error
+        }
+      }
+      
+      setProgressPercent(90)
 
       // Upload to Supabase Storage
       const videoFileName = `${Date.now()}_${file.name.replace(/\.[^/.]+$/, '')}.mp4`
       const thumbnailFileName_final = `${Date.now()}_${file.name.replace(/\.[^/.]+$/, '')}_thumb.jpg`
+      
       
       const videoPath = `${user.id}/${videoFileName}`
       const thumbnailPath = `${user.id}/${thumbnailFileName_final}`
@@ -96,8 +209,10 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
         })
 
       if (videoError) throw videoError
-      setProgressPercent(90)
+      if (cancelled || cancelling) return
+      setProgressPercent(92)
 
+      setProgress('Uploading thumbnail...')
       // Upload thumbnail
       const { error: thumbError } = await supabase.storage
         .from('videos')
@@ -106,6 +221,7 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
         })
 
       if (thumbError) throw thumbError
+      if (cancelled || cancelling) return
       setProgressPercent(95)
 
       setProgress('Saving metadata...')
@@ -113,7 +229,7 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       // Generate share token
       const shareToken = crypto.randomUUID()
 
-      // Save to database
+      // Save to database with user info
       const { error: dbError } = await supabase
         .from('videos')
         .insert({
@@ -123,10 +239,13 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
           thumbnail_path: thumbnailPath,
           original_size: file.size,
           compressed_size: compressedVideo.length,
-          share_token: shareToken
+          share_token: shareToken,
+          user_name: user.user_metadata?.full_name || 'Anonymous User',
+          user_avatar_url: user.user_metadata?.avatar_url || null
         })
 
       if (dbError) throw dbError
+      if (cancelled || cancelling) return
 
       setProgress('Upload complete!')
       setProgressPercent(100)
@@ -142,11 +261,15 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       }
       
     } catch (error) {
-      console.error('Upload failed:', error)
-      setProgress('Upload failed. Please try again.')
-      setProgressPercent(0)
+      if (!cancelled && !cancelling) {
+        console.error('Upload failed:', error)
+        setProgress('Upload failed. Please try again.')
+        setProgressPercent(0)
+      }
     } finally {
       setUploading(false)
+      setCancelling(false)
+      ffmpegRef.current = null
     }
   }
 
@@ -154,7 +277,10 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
     e.preventDefault()
     setDragActive(false)
     const file = e.dataTransfer.files[0]
-    if (file) handleFileSelect(file)
+    if (file && !uploading && !cancelling) {
+      setCancelled(false) // Reset cancelled state for new upload
+      handleFileSelect(file)
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -174,11 +300,16 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
           dragActive 
             ? 'border-indigo-500 bg-indigo-50' 
             : 'border-gray-600 hover:border-gray-500'
-        } ${uploading ? 'pointer-events-none opacity-50' : ''}`}
+        } ${uploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        onClick={() => !uploading && fileInputRef.current?.click()}
+        onClick={() => {
+          if (!uploading && !cancelling) {
+            setCancelled(false) // Reset cancelled state when clicking upload area
+            fileInputRef.current?.click()
+          }
+        }}
       >
         <input
           ref={fileInputRef}
@@ -198,6 +329,7 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
             </div>
             <p className="text-gray-300 mb-2">Drop your video here or click to browse</p>
             <p className="text-gray-500 text-sm">MP4, MOV, AVI, etc.</p>
+            <p className="text-gray-400 text-xs mt-2">Max file size: 200MB</p>
           </>
         ) : (
           <div className="text-gray-300">
@@ -216,6 +348,22 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
           </div>
         )}
       </div>
+      
+      {uploading && (
+        <div className="mt-4">
+          <button
+            onClick={cancelUpload}
+            disabled={cancelling}
+            className={`w-full px-4 py-2 text-white text-sm rounded transition-colors ${
+              cancelling 
+                ? 'bg-gray-600 cursor-not-allowed' 
+                : 'bg-red-600 hover:bg-red-700 cursor-pointer'
+            }`}
+          >
+            {cancelling ? 'Cancelling...' : 'Cancel Upload'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

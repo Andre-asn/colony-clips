@@ -4,6 +4,8 @@ import { SecretCodeGate } from './components/SecretCodeGate'
 import { DiscordLogin } from './components/DiscordLogin'
 import { VideoUpload } from './components/VideoUpload'
 import { VideoGrid } from './components/VideoGrid'
+import { useEffect } from 'react'
+import { supabase } from './lib/supabase'
 
 function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasUploadedVideos }: { 
   onVideoUploaded: () => void, 
@@ -26,7 +28,7 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
                   <img
                     src={user.user_metadata.avatar_url}
                     alt={user.user_metadata.full_name || 'User'}
-                    className="w-8 h-8 rounded-full cursor-pointer"
+                    className="w-8 h-8 rounded-full"
                   />
                   {/* Tooltip - positioned below instead of above */}
                   <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-2 py-1 bg-gray-700 text-white text-sm rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
@@ -38,7 +40,7 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
               )}
               <button
                 onClick={signOut}
-                className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                className="px-4 py-2 text-gray-300 hover:text-white transition-colors cursor-pointer"
               >
                 Log out
               </button>
@@ -69,16 +71,41 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
     )
   }
 
-function App() {
-  const { isAuthenticated, loading } = useAuth()
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const [hasUploadedVideos, setHasUploadedVideos] = useState(false)
-
-  const handleVideoUploaded = () => {
-    // Video uploaded successfully - refresh video list and show grid
-    setRefreshTrigger(prev => prev + 1)
-    setHasUploadedVideos(true)
-  }
+  function App() {
+    const { isAuthenticated, loading, user } = useAuth()
+    const [refreshTrigger, setRefreshTrigger] = useState(0)
+    const [hasUploadedVideos, setHasUploadedVideos] = useState(false)
+  
+    // Check if user has existing videos when they log in
+    useEffect(() => {
+      const checkExistingVideos = async () => {
+        if (!user) return
+        
+        try {
+          const { data, error } = await supabase
+            .from('videos')
+            .select('id')
+            .eq('user_id', user.id)
+            .limit(1)
+  
+          if (!error && data && data.length > 0) {
+            setHasUploadedVideos(true)
+          }
+        } catch (error) {
+          console.error('Error checking existing videos:', error)
+        }
+      }
+  
+      if (isAuthenticated && user) {
+        checkExistingVideos()
+      }
+    }, [isAuthenticated, user])
+  
+    const handleVideoUploaded = () => {
+      // Video uploaded successfully - refresh video list and show grid
+      setRefreshTrigger(prev => prev + 1)
+      setHasUploadedVideos(true)
+    }
 
   if (loading) {
     return (

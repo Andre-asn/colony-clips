@@ -17,12 +17,11 @@ export function useSecretCode() {
     try {
       console.log('Validating secret code:', inputCode)
       
-      // First, let's try a simple query to see if the table is accessible
+      // Query the invite_codes table (simplified - no used_by_user_id column)
       const { data, error } = await supabase
         .from('invite_codes')
-        .select('code, used_by_user_id')
+        .select('code')
         .eq('code', inputCode.toLowerCase())
-        .is('used_by_user_id', null)
 
       console.log('Query result:', { data, error })
 

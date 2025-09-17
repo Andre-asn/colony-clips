@@ -24,6 +24,5 @@ export interface Video {
 export interface InviteCode {
   id: string
   code: string
-  used_by_user_id?: string | null
   created_at: string
 }

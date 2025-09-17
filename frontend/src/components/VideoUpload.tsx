@@ -162,7 +162,6 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
         
         // Use original file instead of compressed version
         compressedVideo = new Uint8Array(await file.arrayBuffer())
-        console.log(`Using original file: ${Math.round(originalFileSize / 1024 / 1024 * 100) / 100}MB vs compressed: ${Math.round(compressedVideo.length / 1024 / 1024 * 100) / 100}MB`)
       } else {
         // Check if compressed video is still too large (>45MB to be safe)
         const maxCompressedSize = 45 * 1024 * 1024 // 45MB

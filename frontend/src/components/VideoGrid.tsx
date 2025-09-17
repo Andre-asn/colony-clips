@@ -31,19 +31,15 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   }, [refreshTrigger, user?.id])
 
   const loadVideos = async () => {
-    console.log('loadVideos called, user:', user)
     
     if (!user) {
-      console.log('No user found, exiting loadVideos')
       setLoading(false)
       return
     }
   
-    console.log('Starting video query for user ID:', user.id)
   
     try {
       if (isFetchingRef.current) {
-        console.log('Fetch already in progress, skipping')
         return
       }
       isFetchingRef.current = true
@@ -53,7 +49,6 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
   
-      console.log('Query result:', { data, error, dataLength: data?.length })
   
       if (error) {
         console.error('Database error:', error)
@@ -64,13 +59,11 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
       
       // Notify parent component about video count
       if (onVideosLoaded) {
-        console.log('Calling onVideosLoaded with:', (data || []).length > 0)
         onVideosLoaded((data || []).length > 0)
       }
     } catch (error) {
       console.error('Failed to load videos:', error)
     } finally {
-      console.log('Setting loading to false')
       setLoading(false)
       isFetchingRef.current = false
     }

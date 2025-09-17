@@ -52,7 +52,6 @@ export function PublicVideoViewer() {
         return
       }
 
-      console.log('Video data:', videoData) // Debug log
 
       // Get video signed URL from R2
       let videoUrl: string

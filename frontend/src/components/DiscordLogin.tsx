@@ -8,13 +8,13 @@ export function DiscordLogin() {
 
   // Define image paths
   const leftImages = [
-    '/private/left/IMG_5619.PNG',
-    '/private/left/IMG_8483.jpg'
+    '/public/left/IMG_5619.PNG',
+    '/public/left/IMG_8483.jpg'
   ]
   
   const rightImages = [
-    '/private/right/442DA714-BDDB-455E-B88F-981EE661DD4B.jpg',
-    '/private/right/makar chad.png'
+    '/public/right/442DA714-BDDB-455E-B88F-981EE661DD4B.jpg',
+    '/public/right/makar chad.png'
   ]
 
   const handleDiscordLogin = async () => {

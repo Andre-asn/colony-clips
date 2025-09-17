@@ -15,47 +15,33 @@ export function useSecretCode() {
 
   const validateSecret = async (inputCode: string): Promise<boolean> => {
     try {
-      console.log('Validating secret code:', inputCode)
-      
-      // Query the invite_codes table (simplified - no used_by_user_id column)
+      // Query the invite_codes table
       const { data, error } = await supabase
         .from('invite_codes')
         .select('code')
         .eq('code', inputCode.toLowerCase())
 
-      console.log('Query result:', { data, error })
-
       if (error) {
-        console.error('Supabase error:', error)
         return false
       }
 
-      // Check if we found a valid unused code
+      // Check if we found a valid code
       if (!data || data.length === 0) {
-        console.log('No valid codes found')
         return false
       }
 
-      console.log('Valid code found!')
       // Valid code found
       localStorage.setItem(STORAGE_KEY, 'true')
       setHasValidSecret(true)
       return true
     } catch (error) {
-      console.error('Error validating secret:', error)
       return false
     }
-  }
-
-  const clearSecret = () => {
-    localStorage.removeItem(STORAGE_KEY)
-    setHasValidSecret(false)
   }
 
   return {
     hasValidSecret,
     loading,
-    validateSecret,
-    clearSecret
+    validateSecret
   }
 }

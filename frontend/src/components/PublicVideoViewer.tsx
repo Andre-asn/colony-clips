@@ -41,13 +41,28 @@ export function PublicVideoViewer() {
 
   const loadVideo = async () => {
     try {
+      if (!token) {
+        setError('Invalid video link')
+        return
+      }
+
+      console.log('Looking for video with token:', token)
+
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .select('*')
         .eq('share_token', token)
         .single()
 
-      if (videoError || !videoData) {
+      console.log('Query result:', { videoData, videoError })
+
+      if (videoError) {
+        console.error('Supabase error:', videoError)
+        setError('Video not found')
+        return
+      }
+
+      if (!videoData) {
         setError('Video not found')
         return
       }

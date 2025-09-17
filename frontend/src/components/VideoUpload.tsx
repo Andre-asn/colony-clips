@@ -1,10 +1,13 @@
 import { useState, useRef } from 'react'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { supabase } from '../lib/supabase'
+import { uploadFile } from '../lib/cloudflare'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from './Toast'
 
 export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState('')
   const [progressPercent, setProgressPercent] = useState(0)
@@ -19,14 +22,14 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       // Check file size - recommend max 200MB for safe compression under 50MB
       const maxSize = 200 * 1024 * 1024 // 200MB in bytes
       if (file.size > maxSize) {
-        alert(`File too large! Maximum recommended size is 200MB. Your file is ${Math.round(file.size / 1024 / 1024)}MB. Please compress your video first or choose a smaller file.`)
+        showToast(`File too large! Maximum recommended size is 200MB. Your file is ${Math.round(file.size / 1024 / 1024)}MB. Please compress your video first or choose a smaller file.`, 'error', 5000)
         return
       }
       
       setCancelled(false) // Reset cancelled state for new upload
       processVideo(file)
     } else {
-      alert('Please select a video file')
+      showToast('Please select a video file', 'error')
     }
   }
 
@@ -193,34 +196,24 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       
       setProgressPercent(90)
 
-      // Upload to Supabase Storage
+      // Upload to Cloudflare R2
       const videoFileName = `${Date.now()}_${file.name.replace(/\.[^/.]+$/, '')}.mp4`
       const thumbnailFileName_final = `${Date.now()}_${file.name.replace(/\.[^/.]+$/, '')}_thumb.jpg`
-      
       
       const videoPath = `${user.id}/${videoFileName}`
       const thumbnailPath = `${user.id}/${thumbnailFileName_final}`
 
-      // Upload compressed video
-      const { error: videoError } = await supabase.storage
-        .from('videos')
-        .upload(videoPath, compressedVideo, {
-          contentType: 'video/mp4'
-        })
-
-      if (videoError) throw videoError
+      setProgress('Uploading video to Cloudflare R2...')
+      // Upload video to R2
+      const videoArray = new Uint8Array(compressedVideo as unknown as ArrayBuffer)
+      await uploadFile(videoPath, videoArray, 'video/mp4')
       if (cancelled || cancelling) return
       setProgressPercent(92)
 
-      setProgress('Uploading thumbnail...')
-      // Upload thumbnail
-      const { error: thumbError } = await supabase.storage
-        .from('videos')
-        .upload(thumbnailPath, thumbnail, {
-          contentType: 'image/jpeg'
-        })
-
-      if (thumbError) throw thumbError
+      setProgress('Uploading thumbnail to R2...')
+      // Upload thumbnail to R2
+      const thumbnailArray = new Uint8Array(thumbnail as unknown as ArrayBuffer)
+      await uploadFile(thumbnailPath, thumbnailArray, 'image/jpeg')
       if (cancelled || cancelling) return
       setProgressPercent(95)
 
@@ -249,6 +242,7 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
 
       setProgress('Upload complete!')
       setProgressPercent(100)
+      showToast('Video uploaded successfully!', 'success')
       onUploadComplete()
       
       // Clean up FFmpeg filesystem
@@ -265,6 +259,7 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
         console.error('Upload failed:', error)
         setProgress('Upload failed. Please try again.')
         setProgressPercent(0)
+        showToast('Upload failed. Please try again.', 'error', 5000)
       }
     } finally {
       setUploading(false)
@@ -294,9 +289,9 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
   }
 
   return (
-    <div className="max-w-md mx-auto">
+    <div className="w-full">
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+        className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors min-h-[300px] flex flex-col justify-center ${
           dragActive 
             ? 'border-indigo-500 bg-indigo-50' 
             : 'border-gray-600 hover:border-gray-500'
@@ -322,14 +317,14 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
         
         {!uploading ? (
           <>
-            <div className="text-gray-400 mb-4">
-              <svg className="mx-auto h-12 w-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="text-gray-400 mb-6">
+              <svg className="mx-auto h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            <p className="text-gray-300 mb-2">Drop your video here or click to browse</p>
-            <p className="text-gray-500 text-sm">MP4, MOV, AVI, etc.</p>
-            <p className="text-gray-400 text-xs mt-2">Max file size: 200MB</p>
+            <p className="text-gray-300 mb-3 text-lg">Drop video here or click to browse</p>
+            <p className="text-gray-500 text-sm mb-2">MP4, MOV, AVI, etc.</p>
+            <p className="text-gray-400 text-sm">Max file size: 200MB</p>
           </>
         ) : (
           <div className="text-gray-300">

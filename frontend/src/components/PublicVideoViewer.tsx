@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getSignedUrlForFile, getPublicUrl } from '../lib/cloudflare'
 
 interface Video {
   id: string
@@ -53,10 +54,15 @@ export function PublicVideoViewer() {
 
       console.log('Video data:', videoData) // Debug log
 
-      // Get video signed URL
-      const { data: signedURL } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(videoData.storage_path, 3600)
+      // Get video signed URL from R2
+      let videoUrl: string
+      try {
+        videoUrl = await getSignedUrlForFile(videoData.storage_path, 3600)
+      } catch (error) {
+        console.error('R2 signed URL error:', error)
+        // Fallback to public URL if bucket is public
+        videoUrl = getPublicUrl(videoData.storage_path)
+      }
 
       // Use stored user data from the video record
       setUser({
@@ -68,7 +74,7 @@ export function PublicVideoViewer() {
         }
       })
 
-      setVideo({ ...videoData, signedURL: signedURL?.signedUrl })
+      setVideo({ ...videoData, signedURL: videoUrl })
     } catch (err) {
       console.error('Error loading video:', err)
       setError('Failed to load video')
@@ -115,7 +121,12 @@ export function PublicVideoViewer() {
       {/* Header */}
       <header className="bg-gray-800 px-6 py-4 flex-shrink-0">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Colony Clips</h1>
+          <h1 
+            className="text-2xl font-bold cursor-pointer hover:text-indigo-400 transition-colors"
+            onClick={() => window.location.href = '/'}
+          >
+            Colony Clips
+          </h1>
           <div className="text-gray-400">Shared Video</div>
         </div>
       </header>
@@ -124,12 +135,12 @@ export function PublicVideoViewer() {
       <div className="flex flex-1 overflow-hidden">
         {/* Video Player - Left Side */}
         <div className="flex-1 p-6">
-          <video
-            className="w-full h-full object-contain rounded-lg"
-            controls
-            poster={video.thumbnail_path ? `https://tscccvcxqggbjltlhnwz.supabase.co/storage/v1/object/public/videos/${video.thumbnail_path}` : undefined}
-            src={video.signedURL}
-          />
+            <video
+              className="w-full h-full object-contain rounded-lg"
+              controls
+              poster={video.thumbnail_path ? getPublicUrl(video.thumbnail_path) : undefined}
+              src={video.signedURL}
+            />
         </div>
 
         {/* Video Info - Right Side */}

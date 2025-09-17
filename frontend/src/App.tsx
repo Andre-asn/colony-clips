@@ -4,6 +4,7 @@ import { SecretCodeGate } from './components/SecretCodeGate'
 import { DiscordLogin } from './components/DiscordLogin'
 import { VideoUpload } from './components/VideoUpload'
 import { VideoGrid } from './components/VideoGrid'
+import { ToastProvider } from './components/Toast'
 import { useEffect } from 'react'
 import { supabase } from './lib/supabase'
 
@@ -15,9 +16,17 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
 }) {
     const { signOut, user } = useAuth()
   
-    return (
-      <div className="min-h-screen bg-gray-900 text-white">
-        <header className="bg-gray-800 px-6 py-4">
+  return (
+    <div className="min-h-screen bg-gray-900 text-white relative">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.15) 1px, transparent 0)`,
+          backgroundSize: '20px 20px'
+        }}></div>
+      </div>
+      
+      <header className="bg-gray-800 px-6 py-4 relative z-10">
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold">Colony Clips</h1>
             
@@ -48,23 +57,54 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
           </div>
         </header>
         
-        <main className="p-6">
-          <div className="text-center py-8">
-            <h2 className="text-xl mb-4">Welcome back!</h2>
-            <p className="text-gray-400 mb-8">Upload and manage your video clips</p>
-            
-            {/* Video Upload Section */}
-            <div className="mb-8">
-              <VideoUpload onUploadComplete={onVideoUploaded} />
+        <main className="flex-1 p-6 relative z-10">
+          <div className="max-w-7xl mx-auto">
+            {/* Welcome Section */}
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold mb-2">Welcome!</h2>
+              <p className="text-gray-400 text-lg">Upload and manage your video clips</p>
             </div>
             
-            {/* Video Grid Section - Only show after first upload */}
-            {hasUploadedVideos && (
-              <div className="mt-12">
-                <h3 className="text-lg font-semibold mb-6">Your Videos</h3>
-                <VideoGrid refreshTrigger={refreshTrigger} onVideosLoaded={setHasUploadedVideos} />
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left Column - Upload Section */}
+              <div className="lg:col-span-1">
+                <div className="sticky top-6">
+                  <h3 className="text-xl font-semibold mb-4 text-white">Upload New Video</h3>
+                  <VideoUpload onUploadComplete={onVideoUploaded} />
+                </div>
               </div>
-            )}
+              
+              {/* Right Column - Videos Grid */}
+              <div className="lg:col-span-2">
+                {hasUploadedVideos ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-2xl font-semibold text-white">Your Videos</h3>
+                      <div className="text-sm text-gray-400">
+                        {refreshTrigger > 0 && 'Recently updated'}
+                      </div>
+                    </div>
+                    <VideoGrid refreshTrigger={refreshTrigger} onVideosLoaded={setHasUploadedVideos} />
+                  </div>
+                ) : (
+                  <div className="text-center py-16">
+                    <div className="bg-gray-800 rounded-lg p-12">
+                      <div className="text-gray-400 mb-4">
+                        <svg className="mx-auto h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-xl font-medium text-white mb-2">No videos yet</h4>
+                      <p className="text-gray-400 mb-6">Upload your first video to get started</p>
+                      <div className="text-sm text-gray-500">
+                        Drag and drop a video file or click the upload area
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -116,18 +156,20 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
   }
 
   return (
-    <SecretCodeGate>
-      {isAuthenticated ? (
-        <Dashboard 
-          onVideoUploaded={handleVideoUploaded} 
-          refreshTrigger={refreshTrigger}
-          hasUploadedVideos={hasUploadedVideos}
-          setHasUploadedVideos={setHasUploadedVideos}
-        />
-      ) : (
-        <DiscordLogin />
-      )}
-    </SecretCodeGate>
+    <ToastProvider>
+      <SecretCodeGate>
+        {isAuthenticated ? (
+          <Dashboard 
+            onVideoUploaded={handleVideoUploaded} 
+            refreshTrigger={refreshTrigger}
+            hasUploadedVideos={hasUploadedVideos}
+            setHasUploadedVideos={setHasUploadedVideos}
+          />
+        ) : (
+          <DiscordLogin />
+        )}
+      </SecretCodeGate>
+    </ToastProvider>
   )
 }
 

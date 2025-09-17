@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { getSignedUrlForFile, getPublicUrl, deleteFile } from '../lib/cloudflare'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from './Toast'
+import { ConfirmationModal } from './ConfirmationModal'
 
 interface Video {
   id: string
@@ -15,9 +18,11 @@ interface Video {
 
 export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: number, onVideosLoaded?: (hasVideos: boolean) => void }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [thumbnailUrlsById, setThumbnailUrlsById] = useState<Record<string, string>>({})
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; video: Video | null }>({ isOpen: false, video: null })
   const isFetchingRef = useRef(false)
 
   useEffect(() => {
@@ -79,14 +84,17 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
           videos.map(async (v) => {
             const key = (v.thumbnail_path || '').trim()
             if (!key) return [v.id, ''] as const
-            const { data, error } = await supabase.storage
-              .from('videos')
-              .createSignedUrl(key, 3600)
-            if (error) {
-              console.error('Signed URL error for key:', key, error)
-              return [v.id, ''] as const
+            
+            try {
+              // Try to get signed URL from R2
+              const signedUrl = await getSignedUrlForFile(key, 3600)
+              return [v.id, signedUrl] as const
+            } catch (error) {
+              console.error('R2 signed URL error for key:', key, error)
+              // Fallback to public URL if bucket is public
+              const publicUrl = getPublicUrl(key)
+              return [v.id, publicUrl] as const
             }
-            return [v.id, data.signedUrl] as const
           })
         )
         const map: Record<string, string> = {}
@@ -102,26 +110,37 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   const copyShareLink = (shareToken: string) => {
     const shareUrl = `${window.location.origin}/watch/${shareToken}`
     navigator.clipboard.writeText(shareUrl)
-    // You could add a toast notification here
-    alert('Share link copied to clipboard!')
+    showToast('Share link copied to clipboard!', 'success')
   }
 
-  const deleteVideo = async (video: Video) => {
-    if (!confirm('Are you sure you want to delete this video?')) return
+  const handleDeleteClick = (video: Video) => {
+    setDeleteModal({ isOpen: true, video })
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.video) return
 
     try {
-      // Delete from storage
-      await supabase.storage.from('videos').remove([video.storage_path, video.thumbnail_path])
+      // Delete from R2 storage
+      await deleteFile(deleteModal.video.storage_path)
+      await deleteFile(deleteModal.video.thumbnail_path)
       
       // Delete from database
-      await supabase.from('videos').delete().eq('id', video.id)
+      await supabase.from('videos').delete().eq('id', deleteModal.video.id)
       
       // Refresh the list
       loadVideos()
+      showToast('Video deleted successfully', 'success')
     } catch (error) {
       console.error('Failed to delete video:', error)
-      alert('Failed to delete video')
+      showToast('Failed to delete video', 'error')
+    } finally {
+      setDeleteModal({ isOpen: false, video: null })
     }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteModal({ isOpen: false, video: null })
   }
 
   if (loading) {
@@ -133,36 +152,46 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       {videos.map((video) => (
-        <div key={video.id} className="bg-gray-800 rounded-lg overflow-hidden">
-          <div className="aspect-square bg-gray-700 relative">
+        <div key={video.id} className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-750 transition-colors">
+          <div className="aspect-video bg-gray-700 relative overflow-hidden">
             {thumbnailUrlsById[video.id] ? (
               <img
                 src={thumbnailUrlsById[video.id]}
                 alt={video.filename}
                 className="w-full h-full object-cover"
+                style={{ objectPosition: 'center' }}
               />
             ) : (
-              <div className="w-full h-full bg-gray-700" />
+              <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                <div className="text-gray-500">
+                  <svg className="w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <div className="text-xs">Loading...</div>
+                </div>
+              </div>
             )}
           </div>
-          <div className="p-3">
-            <h3 className="text-white font-medium truncate mb-2 text-sm">{video.filename}</h3>
-            <div className="text-xs text-gray-400 mb-2">
-              <p>Size: {Math.round(video.compressed_size / 1024 / 1024 * 100) / 100}MB</p>
-              <p>Uploaded: {new Date(video.created_at).toLocaleDateString()}</p>
+          <div className="p-4">
+            <h3 className="text-white font-medium truncate mb-3 text-sm" title={video.filename}>
+              {video.filename}
+            </h3>
+            <div className="flex items-center justify-between text-xs text-gray-400 mb-4">
+              <span>{Math.round(video.compressed_size / 1024 / 1024 * 100) / 100}MB</span>
+              <span>{new Date(video.created_at).toLocaleDateString()}</span>
             </div>
-            <div className="flex gap-1">
+            <div className="flex gap-2">
               <button
                 onClick={() => copyShareLink(video.share_token)}
-                className="flex-1 px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded transition-colors cursor-pointer"
+                className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded transition-colors cursor-pointer font-medium"
               >
                 Share
               </button>
               <button
-                onClick={() => deleteVideo(video)}
-                className="flex-1 px-2 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors cursor-pointer"
+                onClick={() => handleDeleteClick(video)}
+                className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors cursor-pointer font-medium"
               >
                 Delete
               </button>
@@ -170,6 +199,17 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
           </div>
         </div>
       ))}
+      
+      <ConfirmationModal
+        isOpen={deleteModal.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Video"
+        message={`Are you sure you want to delete "${deleteModal.video?.filename}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   )
 }

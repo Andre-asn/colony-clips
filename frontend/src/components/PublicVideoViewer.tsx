@@ -48,11 +48,20 @@ export function PublicVideoViewer() {
 
       console.log('Looking for video with token:', token)
 
+      // First, let's test if we can query the table at all
+      const { data: testData, error: testError } = await supabase
+        .from('videos')
+        .select('id, share_token')
+        .limit(1)
+      
+      console.log('Test query result:', { testData, testError })
+
+      // Try a different query approach
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .select('*')
         .eq('share_token', token)
-        .single()
+        .maybeSingle()
 
       console.log('Query result:', { videoData, videoError })
 

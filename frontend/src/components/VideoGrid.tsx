@@ -101,8 +101,7 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   }, [videos])
 
   const copyShareLink = (shareToken: string) => {
-    // Use short share path that returns OpenGraph tags for Discord embed
-    const shareUrl = `${window.location.origin}/s/${shareToken}`
+    const shareUrl = `${window.location.origin}/watch/${shareToken}`
     navigator.clipboard.writeText(shareUrl)
     showToast('Share link copied to clipboard!', 'success')
   }

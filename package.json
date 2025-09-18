@@ -1,5 +1,9 @@
 {
+  "name": "colony-clips",
+  "version": "1.0.0",
+  "description": "Video sharing platform",
   "dependencies": {
-    "@ffmpeg/util": "^0.12.2"
+    "@vercel/node": "^3.0.0",
+    "@supabase/supabase-js": "^2.38.0"
   }
 }

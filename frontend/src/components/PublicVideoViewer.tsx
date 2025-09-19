@@ -17,6 +17,8 @@ interface Video {
   user_name?: string
   user_avatar_url?: string
   signedURL?: string
+  duration?: number
+  views?: number
 }
 
 interface User {
@@ -34,10 +36,39 @@ export function PublicVideoViewer() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [viewTracked, setViewTracked] = useState(false)
 
   useEffect(() => {
     loadVideo()
   }, [token])
+
+  // Function to increment view count
+  const incrementViews = async (videoId: string) => {
+    if (viewTracked) return // Prevent multiple increments
+    
+    try {
+      // Get current view count
+      const { data: currentVideo } = await supabase
+        .from('videos')
+        .select('views')
+        .eq('id', videoId)
+        .single()
+      
+      if (currentVideo) {
+        const { error } = await supabase
+          .from('videos')
+          .update({ views: (currentVideo.views || 0) + 1 })
+          .eq('id', videoId)
+        
+        if (!error) {
+          setViewTracked(true)
+          console.log('View count incremented for video:', videoId)
+        }
+      }
+    } catch (error) {
+      console.error('Error incrementing views:', error)
+    }
+  }
 
   const loadVideo = async () => {
     try {
@@ -98,6 +129,9 @@ export function PublicVideoViewer() {
       })
 
       setVideo({ ...videoData, signedURL: videoUrl })
+      
+      // Track view when video loads
+      incrementViews(videoData.id)
     } catch (err) {
       console.error('Error loading video:', err)
       setError('Failed to load video')
@@ -172,6 +206,26 @@ export function PublicVideoViewer() {
             {video.filename}
           </h2>
           
+          {/* Video Stats */}
+          <div className="mb-6">
+            <div className="flex items-center gap-4 text-sm text-gray-400">
+              {video.duration && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {Math.floor(video.duration / 60)}:{(video.duration % 60).toString().padStart(2, '0')}
+                </div>
+              )}
+              <div className="flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+                {video.views || 0} views
+              </div>
+            </div>
+          </div>
+
           {/* Uploader Info */}
           <div className="mb-6">
             <div className="flex items-center gap-3 group">

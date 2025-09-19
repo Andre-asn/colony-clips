@@ -28,7 +28,12 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
       
       <header className="bg-gray-800 px-6 py-4 relative z-10">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold">Colony Clips</h1>
+            <div className="flex items-center gap-3">
+              <svg className="w-8 h-8 text-purple-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+              </svg>
+              <h1 className="text-2xl font-bold text-white">Colony Clips</h1>
+            </div>
             
             {/* User Profile Section */}
             <div className="flex items-center gap-4">
@@ -61,8 +66,8 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
           <div className="max-w-7xl mx-auto">
             {/* Welcome Section */}
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold mb-2">Welcome!</h2>
-              <p className="text-gray-400 text-lg">Upload and manage your video clips</p>
+              <h2 className="text-4xl font-bold mb-2 text-white">Welcome to your video hub</h2>
+              <p className="text-gray-300 text-lg">Upload, manage, and share your amazing video content with the world</p>
             </div>
             
             {/* Main Content Grid */}
@@ -81,8 +86,8 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
                   <div>
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-2xl font-semibold text-white">Your Videos</h3>
-                      <div className="text-sm text-gray-400">
-                        {refreshTrigger > 0 && 'Recently updated'}
+                      <div className="px-3 py-1 bg-purple-500 text-white text-sm rounded-full">
+                        Recently updated
                       </div>
                     </div>
                     <VideoGrid refreshTrigger={refreshTrigger} onVideosLoaded={setHasUploadedVideos} />
@@ -96,10 +101,7 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
                         </svg>
                       </div>
                       <h4 className="text-xl font-medium text-white mb-2">No videos yet</h4>
-                      <p className="text-gray-400 mb-6">Upload your first video to get started</p>
-                      <div className="text-sm text-gray-500">
-                        Drag and drop a video file or click the upload area
-                      </div>
+                      <p className="text-gray-400 mb-6">Upload your first video to get started and build your amazing collection</p>
                     </div>
                   </div>
                 )}

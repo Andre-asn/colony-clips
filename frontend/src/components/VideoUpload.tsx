@@ -147,6 +147,40 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       setProgress('Reading files...')
       setProgressPercent(87)
 
+      // Get video duration using HTML5 video element
+      setProgress('Getting video duration...')
+      
+      let videoDuration = 0
+      try {
+        // Create a temporary video element to get duration
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        
+        // Create object URL for the original file
+        const objectUrl = URL.createObjectURL(file)
+        
+        await new Promise((resolve, reject) => {
+          video.onloadedmetadata = () => {
+            videoDuration = Math.floor(video.duration)
+            URL.revokeObjectURL(objectUrl)
+            resolve(videoDuration)
+          }
+          video.onerror = () => {
+            URL.revokeObjectURL(objectUrl)
+            reject(new Error('Could not load video metadata'))
+          }
+          video.src = objectUrl
+        })
+        
+        console.log('Video duration:', videoDuration, 'seconds')
+      } catch (e) {
+        console.warn('Could not extract duration from video element:', e)
+        // Fallback: estimate based on file size (very rough)
+        const estimatedDuration = Math.floor(file.size / (1024 * 1024) * 1) // 1 second per MB
+        videoDuration = Math.max(1, Math.min(estimatedDuration, 300)) // Between 1 second and 5 minutes
+        console.log('Using estimated duration:', videoDuration, 'seconds')
+      }
+
       // Read processed files
       let compressedVideo = await ffmpeg.readFile(outputFileName)
       const thumbnail = await ffmpeg.readFile(thumbnailFileName)
@@ -233,7 +267,9 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
           compressed_size: compressedVideo.length,
           share_token: shareToken,
           user_name: user.user_metadata?.full_name || 'Anonymous User',
-          user_avatar_url: user.user_metadata?.avatar_url || null
+          user_avatar_url: user.user_metadata?.avatar_url || null,
+          duration: videoDuration,
+          views: 0
         })
 
       if (dbError) throw dbError
@@ -292,7 +328,7 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
       <div
         className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors min-h-[300px] flex flex-col justify-center ${
           dragActive 
-            ? 'border-indigo-500 bg-indigo-50' 
+            ? 'border-purple-500 bg-purple-50' 
             : 'border-gray-600 hover:border-gray-500'
         } ${uploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
         onDrop={handleDrop}
@@ -316,14 +352,19 @@ export function VideoUpload({ onUploadComplete }: { onUploadComplete: () => void
         
         {!uploading ? (
           <>
-            <div className="text-gray-400 mb-6">
+            <div className="text-white mb-6">
               <svg className="mx-auto h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            <p className="text-gray-300 mb-3 text-lg">Drop video here or click to browse</p>
-            <p className="text-gray-500 text-sm mb-2">MP4, MOV, AVI, etc.</p>
-            <p className="text-gray-400 text-sm">Max file size: 200MB</p>
+            <p className="text-white mb-3 text-lg font-bold">Upload Video</p>
+            <p className="text-gray-300 text-sm mb-6">Drag and drop your video files here, or click to browse</p>
+            <button className="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-colors flex items-center gap-2 mx-auto">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Choose Files
+            </button>
           </>
         ) : (
           <div className="text-gray-300">

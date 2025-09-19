@@ -28,10 +28,14 @@ export function useAuth() {
   }, [])
 
   const signInWithDiscord = async () => {
+    // Use environment variable if available, otherwise use current origin
+    const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
+    const redirectUrl = `${baseUrl}/auth/callback`
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: `${window.location.origin}`
+        redirectTo: redirectUrl
       }
     })
     if (error) throw error

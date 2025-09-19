@@ -14,6 +14,8 @@ interface Video {
   created_at: string
   original_size: number
   compressed_size: number
+  duration?: number
+  views?: number
 }
 
 export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: number, onVideosLoaded?: (hasVideos: boolean) => void }) {
@@ -24,6 +26,14 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   const [thumbnailUrlsById, setThumbnailUrlsById] = useState<Record<string, string>>({})
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; video: Video | null }>({ isOpen: false, video: null })
   const isFetchingRef = useRef(false)
+
+  // Helper function to format duration from seconds to MM:SS
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
 
   useEffect(() => {
     // Only run when user id changes or refresh is triggered
@@ -76,7 +86,10 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
         const entries = await Promise.all(
           videos.map(async (v) => {
             const key = (v.thumbnail_path || '').trim()
-            if (!key) return [v.id, ''] as const
+            if (!key) {
+              // Return empty string for videos without thumbnails
+              return [v.id, ''] as const
+            }
             
             try {
               // Try to get signed URL from R2
@@ -114,16 +127,23 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
     if (!deleteModal.video) return
 
     try {
-      // Delete from R2 storage
-      await deleteFile(deleteModal.video.storage_path)
-      await deleteFile(deleteModal.video.thumbnail_path)
-      
-      // Delete from database
-      await supabase.from('videos').delete().eq('id', deleteModal.video.id)
-      
-      // Refresh the list
-      loadVideos()
-      showToast('Video deleted successfully', 'success')
+      // For real videos, delete from storage and database
+      if (deleteModal.video.storage_path && deleteModal.video.thumbnail_path) {
+        // Delete from R2 storage
+        await deleteFile(deleteModal.video.storage_path)
+        await deleteFile(deleteModal.video.thumbnail_path)
+        
+        // Delete from database
+        await supabase.from('videos').delete().eq('id', deleteModal.video.id)
+        
+        // Refresh the list
+        loadVideos()
+        showToast('Video deleted successfully', 'success')
+      } else {
+        // For demo videos, just remove from the list
+        setVideos(prev => prev.filter(v => v.id !== deleteModal.video!.id))
+        showToast('Video deleted successfully', 'success')
+      }
     } catch (error) {
       console.error('Failed to delete video:', error)
       showToast('Failed to delete video', 'error')
@@ -136,6 +156,31 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
     setDeleteModal({ isOpen: false, video: null })
   }
 
+  // Function to increment view count (for future use when viewing videos)
+  // const incrementViews = async (videoId: string) => {
+  //   try {
+  //     // Get current video to increment views
+  //     const { data: video } = await supabase
+  //       .from('videos')
+  //       .select('views')
+  //       .eq('id', videoId)
+  //       .single()
+      
+  //     if (video) {
+  //       const { error } = await supabase
+  //         .from('videos')
+  //         .update({ views: (video.views || 0) + 1 })
+  //         .eq('id', videoId)
+        
+  //       if (error) {
+  //         console.error('Failed to increment views:', error)
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error incrementing views:', error)
+  //   }
+  // }
+
   if (loading) {
     return <div className="text-center text-gray-400">Loading videos...</div>
   }
@@ -145,7 +190,7 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {videos.map((video) => (
         <div key={video.id} className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-750 transition-colors">
           <div className="aspect-video bg-gray-700 relative overflow-hidden">
@@ -166,19 +211,30 @@ export function VideoGrid({ refreshTrigger, onVideosLoaded }: { refreshTrigger: 
                 </div>
               </div>
             )}
+            {/* Duration overlay */}
+            {video.duration && (
+              <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {formatDuration(video.duration)}
+              </div>
+            )}
           </div>
           <div className="p-4">
             <h3 className="text-white font-medium truncate mb-3 text-sm" title={video.filename}>
               {video.filename}
             </h3>
-            <div className="flex items-center justify-between text-xs text-gray-400 mb-4">
-              <span>{Math.round(video.compressed_size / 1024 / 1024 * 100) / 100}MB</span>
-              <span>{new Date(video.created_at).toLocaleDateString()}</span>
+            <div className="flex items-center gap-1 text-xs text-gray-400 mb-4">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+              </svg>
+              {video.views || 0} views
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => copyShareLink(video.share_token)}
-                className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded transition-colors cursor-pointer font-medium"
+                className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition-colors cursor-pointer font-medium"
               >
                 Share
               </button>

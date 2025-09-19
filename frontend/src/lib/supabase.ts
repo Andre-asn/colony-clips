@@ -19,6 +19,11 @@ export interface Video {
   compressed_size: number
   share_token?: string
   created_at: string
+  duration?: number
+  views?: number
+  thumbnail_path?: string
+  user_name?: string
+  user_avatar_url?: string
 }
 
 export interface InviteCode {

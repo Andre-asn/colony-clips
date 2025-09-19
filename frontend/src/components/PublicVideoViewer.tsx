@@ -39,6 +39,68 @@ export function PublicVideoViewer() {
     loadVideo()
   }, [token])
 
+  // Update meta tags for Discord embedding
+  useEffect(() => {
+    if (!video) return
+
+    const videoUrl = getPublicUrl(video.storage_path)
+    const thumbnailUrl = getPublicUrl(video.thumbnail_path)
+    const pageTitle = `${video.filename} - Colony Clips`
+    const description = `Video shared on Colony Clips by ${user?.user_metadata?.full_name || 'Anonymous User'}`
+
+    // Update document title
+    document.title = pageTitle
+
+    // Helper function to update or create meta tags
+    const updateMetaTag = (property: string, content: string) => {
+      let meta = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement
+      if (!meta) {
+        meta = document.createElement('meta')
+        meta.setAttribute('property', property)
+        document.head.appendChild(meta)
+      }
+      meta.setAttribute('content', content)
+    }
+
+    const updateMetaName = (name: string, content: string) => {
+      let meta = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement
+      if (!meta) {
+        meta = document.createElement('meta')
+        meta.setAttribute('name', name)
+        document.head.appendChild(meta)
+      }
+      meta.setAttribute('content', content)
+    }
+
+    // Open Graph meta tags (for Discord, Facebook, etc.)
+    updateMetaTag('og:title', pageTitle)
+    updateMetaTag('og:description', description)
+    updateMetaTag('og:image', thumbnailUrl)
+    updateMetaTag('og:video', videoUrl)
+    updateMetaTag('og:video:type', 'video/mp4')
+    updateMetaTag('og:video:width', '1280')
+    updateMetaTag('og:video:height', '720')
+    updateMetaTag('og:type', 'video.other')
+    updateMetaTag('og:site_name', 'Colony Clips')
+    updateMetaTag('og:url', window.location.href)
+
+    // Twitter Card meta tags
+    updateMetaName('twitter:card', 'player')
+    updateMetaName('twitter:title', pageTitle)
+    updateMetaName('twitter:description', description)
+    updateMetaName('twitter:image', thumbnailUrl)
+    updateMetaName('twitter:player', videoUrl)
+    updateMetaName('twitter:player:width', '1280')
+    updateMetaName('twitter:player:height', '720')
+
+    // Additional meta tags for better Discord support
+    updateMetaName('description', description)
+    updateMetaTag('og:image:width', '1280')
+    updateMetaTag('og:image:height', '720')
+    updateMetaTag('og:image:type', 'image/jpeg')
+
+  }, [video, user])
+
   const loadVideo = async () => {
     try {
       if (!token) {

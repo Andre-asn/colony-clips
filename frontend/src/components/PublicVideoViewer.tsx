@@ -43,8 +43,9 @@ export function PublicVideoViewer() {
   useEffect(() => {
     if (!video) return
 
-    const videoUrl = getPublicUrl(video.storage_path)
-    const thumbnailUrl = getPublicUrl(video.thumbnail_path)
+    // Use the signed URL that's already generated for the video
+    const videoUrl = video.signedURL || getPublicUrl(video.storage_path)
+    const thumbnailUrl = video.thumbnail_path ? getPublicUrl(video.thumbnail_path) : ''
     const pageTitle = `${video.filename} - Colony Clips`
     const description = `Video shared on Colony Clips by ${user?.user_metadata?.full_name || 'Anonymous User'}`
 
@@ -98,6 +99,23 @@ export function PublicVideoViewer() {
     updateMetaTag('og:image:width', '1280')
     updateMetaTag('og:image:height', '720')
     updateMetaTag('og:image:type', 'image/jpeg')
+    
+    // Discord-specific meta tags
+    updateMetaTag('og:video:secure_url', videoUrl)
+    updateMetaTag('og:video:url', videoUrl)
+    updateMetaName('twitter:player:stream', videoUrl)
+    
+    // Debug logging for Discord embedding
+    console.log('Discord Embed Debug:')
+    console.log('- Video URL:', videoUrl)
+    console.log('- Thumbnail URL:', thumbnailUrl)
+    console.log('- Page Title:', pageTitle)
+    console.log('- Description:', description)
+    
+    // Ensure video URL is absolute
+    if (videoUrl && !videoUrl.startsWith('http')) {
+      console.warn('Video URL is not absolute:', videoUrl)
+    }
 
   }, [video, user])
 
@@ -139,10 +157,10 @@ export function PublicVideoViewer() {
       }
 
 
-      // Get video signed URL from R2
+      // Get video signed URL from R2 (7 days expiration for Discord embedding)
       let videoUrl: string
       try {
-        videoUrl = await getSignedUrlForFile(videoData.storage_path, 3600)
+        videoUrl = await getSignedUrlForFile(videoData.storage_path, 604800) // 7 days
       } catch (error) {
         console.error('R2 signed URL error:', error)
         // Fallback to public URL if bucket is public

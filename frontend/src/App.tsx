@@ -67,7 +67,7 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
             {/* Welcome Section */}
             <div className="text-center mb-8">
               <h2 className="text-4xl font-bold mb-2 text-white">Welcome to your video hub</h2>
-              <p className="text-gray-300 text-lg">Upload, manage, and share your amazing video content with the world</p>
+              <p className="text-gray-300 text-lg">Upload, manage, and share your clips with the server</p>
             </div>
             
             {/* Main Content Grid */}
@@ -101,7 +101,7 @@ function Dashboard({ onVideoUploaded, refreshTrigger, hasUploadedVideos, setHasU
                         </svg>
                       </div>
                       <h4 className="text-xl font-medium text-white mb-2">No videos yet</h4>
-                      <p className="text-gray-400 mb-6">Upload your first video to get started and build your amazing collection</p>
+                      <p className="text-gray-400 mb-6">Upload your first clip to the left to get started</p>
                     </div>
                   </div>
                 )}

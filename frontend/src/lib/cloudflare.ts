@@ -21,6 +21,8 @@ export const uploadFile = async (key: string, file: Uint8Array, contentType: str
     Key: key,
     Body: file,
     ContentType: contentType,
+    // Make files publicly readable for Discord embedding
+    ACL: 'public-read',
   })
   
   return await r2Client.send(command)

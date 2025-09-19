@@ -43,8 +43,9 @@ export function PublicVideoViewer() {
   useEffect(() => {
     if (!video) return
 
-    // Use the signed URL that's already generated for the video
-    const videoUrl = video.signedURL || getPublicUrl(video.storage_path)
+    // For Discord embedding, we need public URLs (not signed URLs)
+    // Discord can't access signed URLs with expiration times
+    const videoUrl = getPublicUrl(video.storage_path)
     const thumbnailUrl = video.thumbnail_path ? getPublicUrl(video.thumbnail_path) : ''
     const pageTitle = `${video.filename} - Colony Clips`
     const description = `Video shared on Colony Clips by ${user?.user_metadata?.full_name || 'Anonymous User'}`
@@ -111,6 +112,17 @@ export function PublicVideoViewer() {
     console.log('- Thumbnail URL:', thumbnailUrl)
     console.log('- Page Title:', pageTitle)
     console.log('- Description:', description)
+    
+    // Test if public URL is accessible
+    if (videoUrl) {
+      fetch(videoUrl, { method: 'HEAD' })
+        .then(response => {
+          console.log('Video URL accessibility:', response.status, response.ok ? '✅ Accessible' : '❌ Not accessible')
+        })
+        .catch(error => {
+          console.log('Video URL accessibility: ❌ Error:', error.message)
+        })
+    }
     
     // Ensure video URL is absolute
     if (videoUrl && !videoUrl.startsWith('http')) {
